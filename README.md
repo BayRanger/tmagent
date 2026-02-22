@@ -15,6 +15,7 @@ A minimal AI Agent with function calling capability, built as a simplified versi
   - `edit_file` - Edit files by replacing text
   - `bash` - Execute shell commands
 - **Progressive Disclosure** - Token-efficient skill system with 3 levels of disclosure
+- **Memory Management** - Token-based auto-summarization for long conversations
 - **Multi-Provider Support** - Works with Anthropic and OpenAI compatible APIs (including MiniMax)
 - **Simple CLI** - Interactive and non-interactive modes
 
@@ -118,6 +119,38 @@ TM-Agent implements a token-efficient skill system with 3 levels:
 
 See [skills/README.md](skills/README.md) for detailed documentation.
 
+## Memory Management
+
+TM-Agent automatically manages conversation memory using token-based summarization:
+
+```python
+# Create agent with custom token limit
+agent = Agent(
+    llm_client=llm,
+    system_prompt="You are a helpful AI assistant.",
+    tools=[ReadTool(), WriteTool(), BashTool()],
+    token_limit=80_000,  # Default: 80K tokens
+)
+```
+
+### How It Works
+
+1. **Token Counting**: Uses `tiktoken` with `cl100k_base` encoding (GPT-4/Claude compatible)
+2. **Auto-Trigger**: Before each LLM call, checks if token count exceeds limit
+3. **Smart Compression**: 
+   - Keeps: System prompt + User messages (intent is precious)
+   - Summarizes: Assistant reasoning + Tool execution details
+
+### Why This Matters
+
+| Conversation | Without Memory | With Memory |
+|--------------|---------------|------------|
+| 10 tool calls | 20K tokens | 20K tokens |
+| 50 tool calls | 100K tokens (overflow!) | 75K tokens |
+| 100 tool calls | 200K tokens (crash!) | 80K tokens |
+
+See [Tutorial/memory_manange.md](Tutorial/memory_manange.md) for detailed explanation.
+
 ## Configuration
 
 | Option | Description | Default |
@@ -146,7 +179,7 @@ pytest --cov=src/tmagent --cov-report=html
 
 Expected output when all tests pass:
 ```
-✅ All tests passed! (55 tests)
+✅ All tests passed! (65 tests)
 ```
 
 ## Architecture
@@ -177,7 +210,8 @@ tmagent/
 │   ├── test_schema.py        # Schema tests
 │   ├── test_tools.py         # Tools tests
 │   ├── test_function_call.py # Integration tests
-│   └── test_skills.py        # Skill system tests
+│   ├── test_skills.py        # Skill system tests
+│   └── test_memory.py        # Memory management tests
 └── pyproject.toml
 ```
 
@@ -202,14 +236,14 @@ TM-Agent is a simplified version of Mini-Agent. Here's what's included vs missin
 | Function calling | ✅ | ✅ |
 | Built-in tools | 4 tools | 10+ tools |
 | Progressive Disclosure | ✅ (simplified) | ✅ (full) |
+| Memory Management (token limit) | ✅ | ✅ |
 | CLI | Basic | Rich (colors, shortcuts) |
-| Tests | 55 tests | Many tests |
+| Tests | 65 tests | Many tests |
 
 ### ❌ Not Implemented (Yet)
 
 | Feature | Description |
 |---------|-------------|
-| Token management | Auto-summarization for long contexts |
 | Streaming | Real-time response output |
 | MCP support | External tool protocol |
 | Config file | YAML configuration |
@@ -226,6 +260,7 @@ See [skills/README.md](skills/README.md) for detailed skill comparison.
 - anthropic >= 0.39.0
 - openai >= 1.57.4
 - pydantic >= 2.0.0
+- tiktoken >= 0.7.0
 
 ## License
 
