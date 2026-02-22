@@ -22,3 +22,29 @@ dependencies = [
 
 [project.scripts]
 tmagent = "tmagent.cli:main"
+
+[tool.pytest.ini_options]
+# Test discovery
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# Output options
+addopts = [
+    "-v",                    # Verbose
+    "--tb=short",           # Shorter traceback
+    "--color=yes",          # Colored output
+    "-ra",                  # Show test summary (all except passed)
+    "--strict-markers",     # Strict marker checking
+]
+
+# Markers
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+# Console output
+console_output_style = "progress"
