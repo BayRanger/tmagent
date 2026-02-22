@@ -94,6 +94,27 @@ asyncio.run(main())
 | `--workspace` | Working directory | `./workspace` |
 | `--task` | Single task to execute (non-interactive mode) | None |
 
+## Testing
+
+```bash
+# Run all tests with the test runner script
+./run_tests.sh
+
+# Or run pytest directly with detailed output
+pytest -v --tb=short
+
+# Run specific test file
+pytest tests/test_function_call.py -v
+
+# Run with coverage
+pytest --cov=src/tmagent --cov-report=html
+```
+
+Expected output when all tests pass:
+```
+✅ All tests passed! (46 tests)
+```
+
 ## Architecture
 
 ```
