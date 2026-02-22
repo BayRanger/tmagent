@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project]
+name = "tmagent"
+version = "0.1.0"
+description = "Minimal AI Agent with Function Calling"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=0.39.0",
+    "openai>=1.57.4",
+    "pydantic>=2.0.0",
+]
+
+[project.scripts]
+tmagent = "tmagent.cli:main"
