@@ -5,14 +5,20 @@ import json
 from pathlib import Path
 from typing import Any, Optional
 
+import tiktoken
+
 from .llm import LLMClient
 from .schema import Message, ToolCall, ToolResult
 from .tools.base import Tool
 from .tools.skill_loader import SkillLoader
 
 
+# Default token limit (80K tokens, leaving room for response)
+DEFAULT_TOKEN_LIMIT = 80_000
+
+
 class Agent:
-    """Minimal AI Agent with function calling capability and Progressive Disclosure."""
+    """Minimal AI Agent with function calling capability, Progressive Disclosure, and Memory Management."""
 
     def __init__(
         self,
@@ -22,12 +28,17 @@ class Agent:
         max_steps: int = 50,
         workspace_dir: str = "./workspace",
         skills_dir: Optional[str] = None,
+        token_limit: int = DEFAULT_TOKEN_LIMIT,
     ):
         self.llm = llm_client
         self.tools = {tool.name: tool for tool in tools}
         self.max_steps = max_steps
         self.workspace_dir = Path(workspace_dir)
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Memory management
+        self.token_limit = token_limit
+        self.encoder = tiktoken.get_encoding("cl100k_base")
 
         # Initialize skill loader if skills_dir is provided
         self.skill_loader: Optional[SkillLoader] = None
@@ -64,6 +75,10 @@ class Agent:
 
         for step in range(self.max_steps):
             print(f"\n=== Step {step + 1}/{self.max_steps} ===\n")
+
+            # Check token limit and summarize if needed
+            if self._check_and_summarize():
+                await self._summarize_messages()
 
             # Get tool list
             tool_list = list(self.tools.values())
@@ -136,3 +151,125 @@ class Agent:
     def get_history(self) -> list[Message]:
         """Get message history."""
         return self.messages.copy()
+
+    # ==================== Memory Management ====================
+    
+    def count_tokens(self, messages: list[Message] | None = None) -> int:
+        """Count total tokens in message history.
+        
+        Uses tiktoken with cl100k_base encoding (GPT-4/Claude compatible).
+        """
+        if messages is None:
+            messages = self.messages
+            
+        total = 0
+        for msg in messages:
+            # Base overhead per message (role + content structure)
+            total += 4
+            # Content tokens
+            total += len(self.encoder.encode(msg.content))
+            # Additional tokens for tool calls
+            if msg.tool_calls:
+                for tc in msg.tool_calls:
+                    total += len(self.encoder.encode(tc.function.name))
+                    total += len(self.encoder.encode(json.dumps(tc.function.arguments)))
+        return total
+
+    def _get_messages_to_summarize(self) -> tuple[list[Message], list[Message]]:
+        """Get messages between user queries that can be summarized.
+        
+        Returns:
+            - messages_to_summarize: Assistant + tool messages between user queries
+            - remaining_messages: System + user messages to keep
+        """
+        if len(self.messages) <= 2:
+            return [], self.messages
+            
+        # Keep system message
+        system_msg = self.messages[0]
+        
+        # Find all user messages (we never summarize user intent)
+        user_indices = []
+        for i, msg in enumerate(self.messages):
+            if msg.role == "user":
+                user_indices.append(i)
+        
+        if len(user_indices) < 2:
+            # Only one user message, no need to summarize
+            return [], self.messages
+        
+        # Get messages between first user and last user
+        first_user_idx = user_indices[0]
+        last_user_idx = user_indices[-1]
+        
+        # Messages to summarize (between first and last user, excluding both)
+        to_summarize = self.messages[first_user_idx + 1:last_user_idx]
+        
+        # Keep: system + all user messages + messages after last user
+        remaining = [system_msg] + [self.messages[i] for i in user_indices]
+        
+        # Add messages after last user query
+        if last_user_idx + 1 < len(self.messages):
+            remaining += self.messages[last_user_idx + 1:]
+        
+        return to_summarize, remaining
+
+    async def _summarize_messages(self) -> bool:
+        """Summarize old messages when token limit is exceeded.
+        
+        Keeps:
+        - System prompt (never summarize)
+        - All user messages (user intent is precious)
+        - Most recent context
+        
+        Compresses:
+        - Assistant reasoning
+        - Tool execution details
+        - Intermediate steps
+        
+        Returns:
+            True if summarization was performed, False otherwise
+        """
+        to_summarize, remaining = self._get_messages_to_summarize()
+        
+        if not to_summarize:
+            return False
+        
+        # Build summarization prompt
+        summary_prompt = [
+            Message(role="user", content=
+                "Summarize the following conversation concisely, keeping:\n"
+                "1. Key decisions made\n"
+                "2. Important information discovered\n"
+                "3. Current state of work\n"
+                "4. Any errors encountered and how they were resolved\n\n"
+                "Remove verbose details, tool output, and repetitive information."
+            ),
+            *to_summarize
+        ]
+        
+        print(f"\n📝 Summarizing {len(to_summarize)} messages...")
+        
+        # Call LLM to summarize
+        response = await self.llm.generate(messages=summary_prompt, tools=[])
+        
+        # Create summary message
+        summary_content = f"[Previous conversation summarized]\n\n{response.content}"
+        
+        # Replace old messages with summary
+        self.messages = remaining + [
+            Message(role="assistant", content=summary_content)
+        ]
+        
+        new_count = self.count_tokens()
+        print(f"📝 Token count: {new_count:,} (limit: {self.token_limit:,})")
+        
+        return True
+
+    def _check_and_summarize(self) -> bool:
+        """Check if summarization is needed but don't execute it.
+        
+        Returns:
+            True if tokens exceed limit, False otherwise
+        """
+        return self.count_tokens() > self.token_limit

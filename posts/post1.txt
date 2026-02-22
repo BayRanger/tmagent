@@ -1,0 +1,10 @@
+🧵 Just released **TM-Agent** - a minimal AI agent with function calling in <200 lines of Python!
+
+• Built-in tools: read_file, write_file, edit_file, bash
+• Supports Anthropic & OpenAI APIs
+• Simple & easy to extend
+
+Perfect for learning how AI agents work or as a foundation for your own projects.
+
+GitHub: [link]
+#AI #Python #OpenSource
