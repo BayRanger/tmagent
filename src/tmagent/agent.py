@@ -3,15 +3,16 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from .llm import LLMClient
 from .schema import Message, ToolCall, ToolResult
 from .tools.base import Tool
+from .tools.skill_loader import SkillLoader
 
 
 class Agent:
-    """Minimal AI Agent with function calling capability."""
+    """Minimal AI Agent with function calling capability and Progressive Disclosure."""
 
     def __init__(
         self,
@@ -20,12 +21,32 @@ class Agent:
         tools: list[Tool],
         max_steps: int = 50,
         workspace_dir: str = "./workspace",
+        skills_dir: Optional[str] = None,
     ):
         self.llm = llm_client
         self.tools = {tool.name: tool for tool in tools}
         self.max_steps = max_steps
         self.workspace_dir = Path(workspace_dir)
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
+
+        # Initialize skill loader if skills_dir is provided
+        self.skill_loader: Optional[SkillLoader] = None
+        if skills_dir:
+            from .tools.skill_loader import SkillLoader
+            from .tools.skill_tool import GetSkillTool, ListSkillsTool
+
+            self.skill_loader = SkillLoader(skills_dir)
+            discovered_skills = self.skill_loader.discover_skills()
+
+            # Add skill tools to agent
+            if discovered_skills:
+                self.tools["get_skill"] = GetSkillTool(self.skill_loader)
+                self.tools["list_skills"] = ListSkillsTool(self.skill_loader)
+
+                # Add skill metadata to system prompt (Level 1)
+                skills_prompt = self.skill_loader.get_skills_metadata_prompt()
+                if skills_prompt:
+                    system_prompt = system_prompt + f"\n\n{skills_prompt}"
 
         # Inject workspace info into system prompt
         if "Current Workspace" not in system_prompt:
