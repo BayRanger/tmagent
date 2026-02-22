@@ -14,6 +14,7 @@ A minimal AI Agent with function calling capability, built as a simplified versi
   - `write_file` - Write content to files
   - `edit_file` - Edit files by replacing text
   - `bash` - Execute shell commands
+- **Progressive Disclosure** - Token-efficient skill system with 3 levels of disclosure
 - **Multi-Provider Support** - Works with Anthropic and OpenAI compatible APIs (including MiniMax)
 - **Simple CLI** - Interactive and non-interactive modes
 
@@ -49,10 +50,10 @@ tmagent --api-key "your-api-key" --workspace ./myproject
 
 ```python
 import asyncio
-from tm_agent import Agent
-from tm_agent.llm import LLMClient
-from tm_agent.schema import LLMProvider
-from tm_agent.tools import ReadTool, WriteTool, BashTool
+from tmagent import Agent
+from tmagent.llm import LLMClient
+from tmagent.schema import LLMProvider
+from tmagent.tools import ReadTool, WriteTool, BashTool
 
 async def main():
     # Create LLM client
@@ -84,6 +85,39 @@ async def main():
 asyncio.run(main())
 ```
 
+### Using Skills (Progressive Disclosure)
+
+```python
+from tmagent import Agent
+from tmagent.tools import ReadTool, WriteTool, BashTool
+
+# Create agent with skills directory
+agent = Agent(
+    llm_client=llm,
+    system_prompt="You are a helpful AI assistant.",
+    tools=[ReadTool(), WriteTool(), BashTool()],
+    skills_dir="./skills",  # Enable skills
+)
+```
+
+## Progressive Disclosure
+
+TM-Agent implements a token-efficient skill system with 3 levels:
+
+| Level | What Happens | Token Cost |
+|-------|-------------|------------|
+| **Level 1** | Skill names + descriptions in system prompt | ~200 tokens |
+| **Level 2** | Agent calls `get_skill(skill_name="xlsx")` → full content | ~2,000 tokens |
+| **Level 3** | Relative paths converted to absolute paths | Included |
+
+### How It Works
+
+1. **Startup**: Agent discovers all skills in `skills_dir` and adds only metadata to system prompt
+2. **Runtime**: When agent needs a skill, it calls `get_skill(skill_name="...")`
+3. **Resources**: Path references in skills are converted to absolute paths
+
+See [skills/README.md](skills/README.md) for detailed documentation.
+
 ## Configuration
 
 | Option | Description | Default |
@@ -112,7 +146,7 @@ pytest --cov=src/tmagent --cov-report=html
 
 Expected output when all tests pass:
 ```
-✅ All tests passed! (46 tests)
+✅ All tests passed! (55 tests)
 ```
 
 ## Architecture
@@ -129,14 +163,21 @@ tmagent/
 │       ├── __init__.py
 │       ├── base.py        # Tool base class
 │       ├── file_tools.py  # File operation tools
-│       └── bash_tool.py   # Bash command tool
+│       ├── bash_tool.py  # Bash command tool
+│       ├── skill_loader.py   # Skill discovery & loading
+│       └── skill_tool.py    # get_skill, list_skills tools
+├── skills/
+│   ├── README.md          # Skills documentation
+│   ├── calculator/        # Example skill
+│   └── weather/           # Example skill
 ├── images/
 │   ├── tmagent_banner.png    # Social media banner
 │   └── tmagent_badge.png     # Square badge/icon
 ├── tests/
 │   ├── test_schema.py        # Schema tests
 │   ├── test_tools.py         # Tools tests
-│   └── test_function_call.py # Integration tests
+│   ├── test_function_call.py # Integration tests
+│   └── test_skills.py        # Skill system tests
 └── pyproject.toml
 ```
 
@@ -148,6 +189,36 @@ tmagent/
 4. **Tool Execution** → Agent executes the tool and gets result
 5. **Result Feedback** → Tool result is sent back to LLM
 6. **Repeat** → Steps 2-5 repeat until task is complete
+
+## Comparison with Mini-Agent
+
+TM-Agent is a simplified version of Mini-Agent. Here's what's included vs missing:
+
+### ✅ Implemented
+
+| Feature | TM-Agent | Mini-Agent |
+|---------|----------|------------|
+| Core Agent loop | ✅ | ✅ |
+| Function calling | ✅ | ✅ |
+| Built-in tools | 4 tools | 10+ tools |
+| Progressive Disclosure | ✅ (simplified) | ✅ (full) |
+| CLI | Basic | Rich (colors, shortcuts) |
+| Tests | 55 tests | Many tests |
+
+### ❌ Not Implemented (Yet)
+
+| Feature | Description |
+|---------|-------------|
+| Token management | Auto-summarization for long contexts |
+| Streaming | Real-time response output |
+| MCP support | External tool protocol |
+| Config file | YAML configuration |
+| Retry logic | Exponential backoff |
+| Logger | Detailed request logging |
+| More tools | SearchTool, HttpTool, ListFilesTool |
+| More skills | 13 skills vs 2 skills |
+
+See [skills/README.md](skills/README.md) for detailed skill comparison.
 
 ## Requirements
 
